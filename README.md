@@ -26,6 +26,6 @@ Untuk HDUL yang masih belum berubah, aplikasi memakai tanggal pengambilan file s
 
 Dataset kerja dibaca dari tab `Data_kerja_HDUL` di Google Sheets. Jika tab tersebut belum ada, aplikasi membaca tab `Data` yang sudah tersedia; impor data terbaru untuk menyimpan nilai pembanding secara lengkap. Saat disimpan, aplikasi memperbarui kedua tab: `Data_kerja_HDUL` berisi dataset lengkap dan `Data` berisi hasil tampilan. Edit langsung di kedua tab dapat tertimpa saat penyimpanan berikutnya. Letakkan tepat satu file JSON service account di folder `data`, aktifkan Google Sheets API, dan bagikan spreadsheet ke email service account sebagai Editor.
 
-Di Streamlit Community Cloud, masukkan kredensial service account dalam format TOML di Secrets dengan bagian `[gcp_service_account]`. Tambahkan `app_password = "kata-sandi-yang-kuat"` sebelum bagian tersebut; aplikasi meminta kata sandi sebelum membaca data. Gunakan pembatasan akses tambahan yang sesuai untuk data pasien.
+Di Streamlit Community Cloud, masukkan kredensial service account dalam format TOML di Secrets dengan bagian `[gcp_service_account]`. Aplikasi tidak meminta kata sandi; siapa pun yang bisa mengakses aplikasi dapat melihat dataset.
 
 Edit kolom sumber dan tambah baris tersedia dalam tabel. Kolom pembanding diperbarui dengan mengimpor CSV terbaru. Data dari versi aplikasi lama tidak dihapus; gunakan `HDUL_DB_PATH` untuk memilih database baru, lalu impor ulang data awal.

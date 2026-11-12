@@ -1,4 +1,3 @@
-import hmac
 from datetime import date, datetime
 from html import escape
 from zoneinfo import ZoneInfo
@@ -41,26 +40,6 @@ def review_table(df):
 st.set_page_config(page_title="Pengolah HDUL", layout="wide")
 st.title("Pengolah data kontrol")
 st.caption("Impor CSV atau Excel, rapikan data, cocokkan rencana kontrol, lalu unduh hasilnya.")
-
-try:
-    cloud_credentials = "gcp_service_account" in st.secrets
-except FileNotFoundError:
-    cloud_credentials = False
-
-if cloud_credentials:
-    password = st.secrets.get("app_password", "")
-    if not isinstance(password, str) or not password:
-        st.error("Tambahkan app_password di Secrets Streamlit sebelum membuka data.")
-        st.stop()
-    if not st.session_state.get("authenticated", False):
-        entered_password = st.text_input("Kata sandi aplikasi", type="password")
-        if entered_password and hmac.compare_digest(entered_password, password):
-            st.session_state.authenticated = True
-            st.rerun()
-        if entered_password:
-            st.error("Kata sandi tidak sesuai.")
-        st.stop()
-
 
 def save(df):
     sync(df, display_result(df))
