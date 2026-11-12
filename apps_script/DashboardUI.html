@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Monitoring HDUL</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+    .stat-badge { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body class="p-5 overflow-x-hidden">
+  
+  <!-- Loading Spinner -->
+  <div id="loading" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900 bg-opacity-95">
+    <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+    <p class="text-slate-300 text-sm font-medium">Memuat dan mengolah data dari tab Data...</p>
+  </div>
+
+  <div id="content" class="hidden max-w-7xl mx-auto space-y-5">
+    
+    <!-- Top Bar: Header & Date Filter -->
+    <div class="card p-4 flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-emerald-500">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>📊</span> Monitoring & Evaluasi Surat Kontrol (HDUL)
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Target resolusi nomor surat kontrol: <span class="text-emerald-400 font-semibold">&le; 2 hari kalender</span> sejak tanggal dibuat (inserted_date).
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <label for="dateSelect" class="text-xs text-slate-300 font-medium">Pilih Tanggal:</label>
+        <select id="dateSelect" onchange="onDateChanged()" class="bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          <option value="ALL">🌟 Semua Tanggal (Akumulasi)</option>
+        </select>
+        <button onclick="copySummaryText()" class="ml-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+          <span>📋</span> Salin Ringkasan
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Filter Indicator Banner -->
+    <div id="filterBanner" class="text-xs text-slate-400 px-1 flex items-center justify-between">
+      <div>Menampilkan data untuk: <span id="activeDateLabel" class="text-emerald-400 font-semibold">Semua Tanggal (Akumulasi)</span></div>
+      <div id="copyAlert" class="text-emerald-400 hidden font-semibold">✅ Ringkasan berhasil disalin ke clipboard!</div>
+    </div>
+
+    <!-- KPI Metric Cards Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      
+      <!-- 1. Total Pasien -->
+      <div class="card p-3 flex flex-col justify-between">
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Total Pasien</div>
+        <div id="kpiTotal" class="text-2xl font-bold text-white my-1 stat-badge">0</div>
+        <div class="text-[10px] text-slate-400">100% rencana kontrol</div>
+      </div>
+
+      <!-- 2. Awal Tidak HDUL -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-teal-500">
+        <div class="text-[11px] font-semibold text-teal-400 uppercase tracking-wide">Awal Tdk HDUL</div>
+        <div id="kpiTidakHdul" class="text-2xl font-bold text-teal-300 my-1 stat-badge">0</div>
+        <div id="kpiPctTidakHdul" class="text-[10px] text-teal-400/80 font-medium">0.0% dari total</div>
+      </div>
+
+      <!-- 3. Awal HDUL -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-indigo-500">
+        <div class="text-[11px] font-semibold text-indigo-400 uppercase tracking-wide">Awal HDUL</div>
+        <div id="kpiAwalHdul" class="text-2xl font-bold text-indigo-300 my-1 stat-badge">0</div>
+        <div id="kpiPctAwalHdul" class="text-[10px] text-indigo-400/80 font-medium">0.0% dari total</div>
+      </div>
+
+      <!-- 4. Sesuai Target -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-emerald-500 bg-emerald-950/20">
+        <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wide">Sesuai Target</div>
+        <div id="kpiSesuai" class="text-2xl font-bold text-emerald-400 my-1 stat-badge">0</div>
+        <div id="kpiPctSesuai" class="text-[10px] text-emerald-300 font-medium">0.0% dari HDUL (&le;2hr)</div>
+      </div>
+
+      <!-- 5. Melewati Target -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-amber-500 bg-amber-950/20">
+        <div class="text-[11px] font-semibold text-amber-400 uppercase tracking-wide">Melewati Target</div>
+        <div id="kpiMelewati" class="text-2xl font-bold text-amber-400 my-1 stat-badge">0</div>
+        <div id="kpiPctMelewati" class="text-[10px] text-amber-300 font-medium">0.0% dari HDUL (&gt;2hr)</div>
+      </div>
+
+      <!-- 6. Belum Diubah (Lewat Target) - ALERT -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-rose-500 bg-rose-950/30">
+        <div class="text-[11px] font-semibold text-rose-400 uppercase tracking-wide">Masih HDUL (&gt;2hr)</div>
+        <div id="kpiMasihLewat" class="text-2xl font-bold text-rose-400 my-1 stat-badge">0</div>
+        <div id="kpiPctMasihLewat" class="text-[10px] text-rose-300 font-medium">🚨 Butuh Tindakan</div>
+      </div>
+
+      <!-- 7. Belum Diubah (Masih Dalam Target) -->
+      <div class="card p-3 flex flex-col justify-between border-t-2 border-t-blue-500">
+        <div class="text-[11px] font-semibold text-blue-400 uppercase tracking-wide">Masih HDUL (&le;2hr)</div>
+        <div id="kpiMasihDalam" class="text-2xl font-bold text-blue-300 my-1 stat-badge">0</div>
+        <div id="kpiPctMasihDalam" class="text-[10px] text-blue-400/80 font-medium">0.0% masih aman</div>
+      </div>
+
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      
+      <!-- Chart 1: Proporsi Kondisi Awal -->
+      <div class="card p-4 flex flex-col">
+        <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <span>🎯</span> Kondisi Awal Pasien
+        </h2>
+        <div class="relative flex-1 min-h-[220px]">
+          <canvas id="chartAwal"></canvas>
+        </div>
+      </div>
+
+      <!-- Chart 2: Evaluasi Status Pasien Awal HDUL -->
+      <div class="card p-4 flex flex-col">
+        <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <span>📈</span> Evaluasi Pasien Awal HDUL
+        </h2>
+        <div class="relative flex-1 min-h-[220px]">
+          <canvas id="chartHdul"></canvas>
+        </div>
+      </div>
+
+      <!-- Chart 3: Tren Harian Status HDUL -->
+      <div class="card p-4 flex flex-col">
+        <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <span>📅</span> Tren Harian Status HDUL
+        </h2>
+        <div class="relative flex-1 min-h-[220px]">
+          <canvas id="chartTren"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Daily Breakdown Table -->
+    <div class="card p-4">
+      <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+        <span>📋</span> Rincian Rekapitulasi per Tanggal Pembuatan (inserted_date)
+      </h2>
+      <div class="overflow-x-auto max-h-72">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="sticky top-0 bg-slate-900 text-slate-400 uppercase text-[10px] font-semibold border-b border-slate-700">
+            <tr>
+              <th class="py-2 px-3">Tanggal</th>
+              <th class="py-2 px-3 text-right">Total</th>
+              <th class="py-2 px-3 text-right">Awal Tdk HDUL</th>
+              <th class="py-2 px-3 text-right">% Tdk HDUL</th>
+              <th class="py-2 px-3 text-right">Awal HDUL</th>
+              <th class="py-2 px-3 text-right">% HDUL</th>
+              <th class="py-2 px-3 text-right text-emerald-400">Sesuai (&le;2hr)</th>
+              <th class="py-2 px-3 text-right text-emerald-400">% Sesuai</th>
+              <th class="py-2 px-3 text-right text-amber-400">Lewat (&gt;2hr)</th>
+              <th class="py-2 px-3 text-right text-amber-400">% Lewat</th>
+              <th class="py-2 px-3 text-right text-blue-400">Masih HDUL (&le;2hr)</th>
+              <th class="py-2 px-3 text-right text-rose-400 font-bold">Masih HDUL (&gt;2hr)</th>
+              <th class="py-2 px-3 text-right text-slate-400">Blm Ada / Cek</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-800 text-slate-300 font-mono">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let globalData = null;
+    let chartAwalInstance = null;
+    let chartHdulInstance = null;
+    let chartTrenInstance = null;
+
+    // Load data from Google Apps Script Backend
+    window.addEventListener('DOMContentLoaded', () => {
+      google.script.run
+        .withSuccessHandler(onDataLoaded)
+        .withFailureHandler(onError)
+        .getDashboardDataJson();
+    });
+
+    function onError(err) {
+      document.getElementById('loading').innerHTML = `
+        <div class="text-rose-400 text-center px-4 max-w-md">
+          <p class="text-xl font-bold mb-2">❌ Terjadi Kesalahan</p>
+          <p class="text-sm text-slate-300">${err.message || err}</p>
+        </div>
+      `;
+    }
+
+    function onDataLoaded(data) {
+      globalData = data;
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+
+      // Populate Date Dropdown
+      const select = document.getElementById('dateSelect');
+      for (let i = 0; i < data.dailyList.length; i++) {
+        const d = data.dailyList[i];
+        const opt = document.createElement('option');
+        opt.value = d.date;
+        opt.textContent = `📅 ${d.date} (${d.total} pasien)`;
+        select.appendChild(opt);
+      }
+
+      renderDashboard('ALL');
+      renderTable(data.dailyList, data.totalAll);
+      initTrenChart(data.dailyList);
+    }
+
+    function onDateChanged() {
+      const selected = document.getElementById('dateSelect').value;
+      renderDashboard(selected);
+    }
+
+    function getStatsForSelection(val) {
+      if (val === 'ALL') {
+        return {
+          label: "Semua Tanggal (Akumulasi)",
+          data: globalData.totalAll
+        };
+      }
+      for (let i = 0; i < globalData.dailyList.length; i++) {
+        if (globalData.dailyList[i].date === val) {
+          return {
+            label: `Tanggal ${val}`,
+            data: globalData.dailyList[i]
+          };
+        }
+      }
+      return { label: "-", data: globalData.totalAll };
+    }
+
+    function renderDashboard(selectedVal) {
+      const statObj = getStatsForSelection(selectedVal);
+      const s = statObj.data;
+      document.getElementById('activeDateLabel').textContent = statObj.label;
+
+      const pctTdkHdul = s.total > 0 ? (s.awalTidakHdul / s.total * 100).toFixed(1) : "0.0";
+      const pctHdul = s.total > 0 ? (s.awalHdul / s.total * 100).toFixed(1) : "0.0";
+      const pctSesuai = s.awalHdul > 0 ? (s.sesuaiTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMelewati = s.awalHdul > 0 ? (s.melewatiTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMasihLewat = s.awalHdul > 0 ? (s.belumDiubahLewatTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMasihDalam = s.awalHdul > 0 ? (s.belumDiubahDalamTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+
+      // Update KPI Cards
+      document.getElementById('kpiTotal').textContent = s.total.toLocaleString();
+      document.getElementById('kpiTidakHdul').textContent = s.awalTidakHdul.toLocaleString();
+      document.getElementById('kpiPctTidakHdul').textContent = `${pctTdkHdul}% dari total`;
+
+      document.getElementById('kpiAwalHdul').textContent = s.awalHdul.toLocaleString();
+      document.getElementById('kpiPctAwalHdul').textContent = `${pctHdul}% dari total`;
+
+      document.getElementById('kpiSesuai').textContent = s.sesuaiTarget.toLocaleString();
+      document.getElementById('kpiPctSesuai').textContent = `${pctSesuai}% dari HDUL (≤2hr)`;
+
+      document.getElementById('kpiMelewati').textContent = s.melewatiTarget.toLocaleString();
+      document.getElementById('kpiPctMelewati').textContent = `${pctMelewati}% dari HDUL (>2hr)`;
+
+      document.getElementById('kpiMasihLewat').textContent = s.belumDiubahLewatTarget.toLocaleString();
+      document.getElementById('kpiPctMasihLewat').textContent = `${pctMasihLewat}% Lewat Target`;
+
+      document.getElementById('kpiMasihDalam').textContent = s.belumDiubahDalamTarget.toLocaleString();
+      document.getElementById('kpiPctMasihDalam').textContent = `${pctMasihDalam}% dalam target`;
+
+      // Render Charts for selected subset
+      updateDonutAwalChart(s);
+      updateDonutHdulChart(s);
+    }
+
+    function updateDonutAwalChart(s) {
+      const ctx = document.getElementById('chartAwal').getContext('2d');
+      if (chartAwalInstance) chartAwalInstance.destroy();
+
+      chartAwalInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Tidak HDUL', 'Awal HDUL'],
+          datasets: [{
+            data: [s.awalTidakHdul, s.awalHdul],
+            backgroundColor: ['#0d9488', '#6366f1'],
+            borderColor: '#1e293b',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  const val = ctx.raw || 0;
+                  const total = s.total || 1;
+                  const pct = ((val / total) * 100).toFixed(1);
+                  return ` ${ctx.label}: ${val} (${pct}%)`;
+                }
+              }
+            }
+          },
+          cutout: '65%'
+        }
+      });
+    }
+
+    function updateDonutHdulChart(s) {
+      const ctx = document.getElementById('chartHdul').getContext('2d');
+      if (chartHdulInstance) chartHdulInstance.destroy();
+
+      chartHdulInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: [
+            'Sesuai Target (≤2hr)',
+            'Melewati Target (>2hr)',
+            'Masih HDUL (≤2hr)',
+            'Masih HDUL (>2hr)',
+            'Belum Ada Data / Cek'
+          ],
+          datasets: [{
+            data: [
+              s.sesuaiTarget,
+              s.melewatiTarget,
+              s.belumDiubahDalamTarget,
+              s.belumDiubahLewatTarget,
+              s.tidakDiketahui
+            ],
+            backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#94a3b8'],
+            borderColor: '#1e293b',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  const val = ctx.raw || 0;
+                  const total = s.awalHdul || 1;
+                  const pct = ((val / total) * 100).toFixed(1);
+                  return ` ${ctx.label}: ${val} (${pct}%)`;
+                }
+              }
+            }
+          },
+          cutout: '65%'
+        }
+      });
+    }
+
+    function initTrenChart(dailyList) {
+      const ctx = document.getElementById('chartTren').getContext('2d');
+      const labels = dailyList.map(d => d.date);
+
+      chartTrenInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Sesuai Target',
+              data: dailyList.map(d => d.sesuaiTarget),
+              backgroundColor: '#10b981',
+              stack: 'HDUL'
+            },
+            {
+              label: 'Melewati Target',
+              data: dailyList.map(d => d.melewatiTarget),
+              backgroundColor: '#f59e0b',
+              stack: 'HDUL'
+            },
+            {
+              label: 'Masih HDUL (≤2hr)',
+              data: dailyList.map(d => d.belumDiubahDalamTarget),
+              backgroundColor: '#3b82f6',
+              stack: 'HDUL'
+            },
+            {
+              label: 'Masih HDUL (>2hr)',
+              data: dailyList.map(d => d.belumDiubahLewatTarget),
+              backgroundColor: '#ef4444',
+              stack: 'HDUL'
+            },
+            {
+              label: 'Belum Ada Data',
+              data: dailyList.map(d => d.tidakDiketahui),
+              backgroundColor: '#94a3b8',
+              stack: 'HDUL'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true, ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+            y: { stacked: true, ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#334155' } }
+          },
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    function renderTable(dailyList, totalAll) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      for (let i = 0; i < dailyList.length; i++) {
+        const d = dailyList[i];
+        const pctTdkHdul = d.total > 0 ? (d.awalTidakHdul / d.total * 100).toFixed(1) : "0.0";
+        const pctHdul = d.total > 0 ? (d.awalHdul / d.total * 100).toFixed(1) : "0.0";
+        const pctSesuai = d.awalHdul > 0 ? (d.sesuaiTarget / d.awalHdul * 100).toFixed(1) : "0.0";
+        const pctMelewati = d.awalHdul > 0 ? (d.melewatiTarget / d.awalHdul * 100).toFixed(1) : "0.0";
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-800/60 transition";
+        tr.innerHTML = `
+          <td class="py-2 px-3 font-semibold text-slate-200">${d.date}</td>
+          <td class="py-2 px-3 text-right">${d.total}</td>
+          <td class="py-2 px-3 text-right text-teal-400">${d.awalTidakHdul}</td>
+          <td class="py-2 px-3 text-right text-teal-400">${pctTdkHdul}%</td>
+          <td class="py-2 px-3 text-right text-indigo-400 font-semibold">${d.awalHdul}</td>
+          <td class="py-2 px-3 text-right text-indigo-400">${pctHdul}%</td>
+          <td class="py-2 px-3 text-right text-emerald-400">${d.sesuaiTarget}</td>
+          <td class="py-2 px-3 text-right text-emerald-400">${pctSesuai}%</td>
+          <td class="py-2 px-3 text-right text-amber-400">${d.melewatiTarget}</td>
+          <td class="py-2 px-3 text-right text-amber-400">${pctMelewati}%</td>
+          <td class="py-2 px-3 text-right text-blue-400">${d.belumDiubahDalamTarget}</td>
+          <td class="py-2 px-3 text-right ${d.belumDiubahLewatTarget > 0 ? 'text-rose-400 font-bold bg-rose-950/40' : 'text-slate-400'}">${d.belumDiubahLewatTarget}</td>
+          <td class="py-2 px-3 text-right text-slate-400">${d.tidakDiketahui}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      // Add Total Row
+      const totPctTdkHdul = totalAll.total > 0 ? (totalAll.awalTidakHdul / totalAll.total * 100).toFixed(1) : "0.0";
+      const totPctHdul = totalAll.total > 0 ? (totalAll.awalHdul / totalAll.total * 100).toFixed(1) : "0.0";
+      const totPctSesuai = totalAll.awalHdul > 0 ? (totalAll.sesuaiTarget / totalAll.awalHdul * 100).toFixed(1) : "0.0";
+      const totPctMelewati = totalAll.awalHdul > 0 ? (totalAll.melewatiTarget / totalAll.awalHdul * 100).toFixed(1) : "0.0";
+
+      const trTotal = document.createElement('tr');
+      trTotal.className = "bg-slate-900 font-bold text-white border-t-2 border-slate-700";
+      trTotal.innerHTML = `
+        <td class="py-2.5 px-3">TOTAL</td>
+        <td class="py-2.5 px-3 text-right">${totalAll.total}</td>
+        <td class="py-2.5 px-3 text-right text-teal-400">${totalAll.awalTidakHdul}</td>
+        <td class="py-2.5 px-3 text-right text-teal-400">${totPctTdkHdul}%</td>
+        <td class="py-2.5 px-3 text-right text-indigo-400">${totalAll.awalHdul}</td>
+        <td class="py-2.5 px-3 text-right text-indigo-400">${totPctHdul}%</td>
+        <td class="py-2.5 px-3 text-right text-emerald-400">${totalAll.sesuaiTarget}</td>
+        <td class="py-2.5 px-3 text-right text-emerald-400">${totPctSesuai}%</td>
+        <td class="py-2.5 px-3 text-right text-amber-400">${totalAll.melewatiTarget}</td>
+        <td class="py-2.5 px-3 text-right text-amber-400">${totPctMelewati}%</td>
+        <td class="py-2.5 px-3 text-right text-blue-400">${totalAll.belumDiubahDalamTarget}</td>
+        <td class="py-2.5 px-3 text-right text-rose-400">${totalAll.belumDiubahLewatTarget}</td>
+        <td class="py-2.5 px-3 text-right text-slate-400">${totalAll.tidakDiketahui}</td>
+      `;
+      tbody.appendChild(trTotal);
+    }
+
+    function copySummaryText() {
+      const selectedVal = document.getElementById('dateSelect').value;
+      const statObj = getStatsForSelection(selectedVal);
+      const s = statObj.data;
+
+      const pctTdkHdul = s.total > 0 ? (s.awalTidakHdul / s.total * 100).toFixed(1) : "0.0";
+      const pctHdul = s.total > 0 ? (s.awalHdul / s.total * 100).toFixed(1) : "0.0";
+      const pctSesuai = s.awalHdul > 0 ? (s.sesuaiTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMelewati = s.awalHdul > 0 ? (s.melewatiTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMasihDalam = s.awalHdul > 0 ? (s.belumDiubahDalamTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctMasihLewat = s.awalHdul > 0 ? (s.belumDiubahLewatTarget / s.awalHdul * 100).toFixed(1) : "0.0";
+      const pctUnknown = s.awalHdul > 0 ? (s.tidakDiketahui / s.awalHdul * 100).toFixed(1) : "0.0";
+
+      const text = 
+`📊 LAPORAN MONITORING SURAT KONTROL (HDUL)
+Periode/Tanggal: ${statObj.label}
+👥 Total Pasien: ${s.total.toLocaleString()} orang
+
+📌 KONDISI AWAL:
+• Tidak HDUL: ${s.awalTidakHdul} (${pctTdkHdul}%)
+• Awal HDUL: ${s.awalHdul} (${pctHdul}%)
+
+🎯 EVALUASI STATUS PASIEN AWAL HDUL (Basis ${s.awalHdul} orang):
+✅ Sesuai Target (≤ 2 hari): ${s.sesuaiTarget} (${pctSesuai}%)
+⚠️ Melewati Target (> 2 hari): ${s.melewatiTarget} (${pctMelewati}%)
+⏳ Masih HDUL (≤ 2 hari): ${s.belumDiubahDalamTarget} (${pctMasihDalam}%)
+🚨 Masih HDUL (> 2 hari): ${s.belumDiubahLewatTarget} (${pctMasihLewat}%) [BUTUH FOLLOW UP]
+❓ Belum Ada Data / Cek: ${s.tidakDiketahui} (${pctUnknown}%)
+`;
+
+      navigator.clipboard.writeText(text).then(() => {
+        const alertBox = document.getElementById('copyAlert');
+        alertBox.classList.remove('hidden');
+        setTimeout(() => alertBox.classList.add('hidden'), 3500);
+      });
+    }
+  </script>
+</body>
+</html>
