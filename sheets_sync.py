@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import gspread
+import streamlit as st
 from gspread.exceptions import WorksheetNotFound
 
 SPREADSHEET_ID = "1dbUFFyyseXObg7r4jLofnTrUcWycte4YryeSH62GuII"
@@ -9,10 +10,18 @@ TAB = "Data"
 
 
 def sync(df):
-    keys = list(Path("data").glob("*.json"))
-    if len(keys) != 1:
-        raise ValueError("Letakkan tepat satu file JSON service account di folder data.")
-    client = gspread.service_account(filename=str(keys[0]), scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    try:
+        credentials = dict(st.secrets["gcp_service_account"])
+    except (FileNotFoundError, KeyError):
+        credentials = None
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    if credentials:
+        client = gspread.service_account_from_dict(credentials, scopes=scopes)
+    else:
+        keys = list(Path("data").glob("*.json"))
+        if len(keys) != 1:
+            raise ValueError("Isi Secrets [gcp_service_account] atau letakkan satu file JSON service account di folder data.")
+        client = gspread.service_account(filename=str(keys[0]), scopes=scopes)
     sheet = client.open_by_key(SPREADSHEET_ID)
     try:
         tab = sheet.worksheet(TAB)
