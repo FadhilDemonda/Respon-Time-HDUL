@@ -1,16 +1,13 @@
-import os
-import sqlite3
+import hmac
 from datetime import date, datetime
 from html import escape
-from io import StringIO
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
 from engine import INSERTED, KEY, META, RESPON, SOURCE, SURAT, UPDATED, category_initial, compare, display_result, initialize, prepare_auto, read_csv, read_excel
-from sheets_sync import TAB, sync
+from sheets_sync import TAB, load as load_sheet, sync
 
 
 def review_table(df):
@@ -45,25 +42,36 @@ st.set_page_config(page_title="Pengolah HDUL", layout="wide")
 st.title("Pengolah data kontrol")
 st.caption("Impor CSV atau Excel, rapikan data, cocokkan rencana kontrol, lalu unduh hasilnya.")
 
-db_path = Path(os.environ.get("HDUL_DB_PATH", "data/hdul.db"))
-db_path.parent.mkdir(parents=True, exist_ok=True)
+try:
+    cloud_credentials = "gcp_service_account" in st.secrets
+except FileNotFoundError:
+    cloud_credentials = False
 
-
-def load():
-    with sqlite3.connect(db_path) as con:
-        con.execute("CREATE TABLE IF NOT EXISTS dataset (id INTEGER PRIMARY KEY CHECK (id = 1), content TEXT NOT NULL)")
-        row = con.execute("SELECT content FROM dataset WHERE id = 1").fetchone()
-    return pd.read_json(StringIO(row[0]), orient="table", dtype=False).fillna("").astype(str) if row else None
+if cloud_credentials:
+    password = st.secrets.get("app_password", "")
+    if not isinstance(password, str) or not password:
+        st.error("Tambahkan app_password di Secrets Streamlit sebelum membuka data.")
+        st.stop()
+    if not st.session_state.get("authenticated", False):
+        entered_password = st.text_input("Kata sandi aplikasi", type="password")
+        if entered_password and hmac.compare_digest(entered_password, password):
+            st.session_state.authenticated = True
+            st.rerun()
+        if entered_password:
+            st.error("Kata sandi tidak sesuai.")
+        st.stop()
 
 
 def save(df):
-    with sqlite3.connect(db_path) as con:
-        sync(display_result(df))
-        con.execute("INSERT OR REPLACE INTO dataset (id, content) VALUES (1, ?)", (df.to_json(orient="table", force_ascii=False),))
+    sync(df, display_result(df))
 
 
 if "dataset" not in st.session_state:
-    st.session_state.dataset = load()
+    try:
+        st.session_state.dataset, st.session_state.legacy_sheet = load_sheet()
+    except Exception as exc:
+        st.error(f"Gagal membaca Google Sheets: {exc}")
+        st.stop()
 if "revision" not in st.session_state:
     st.session_state.revision = 0
 dataset = st.session_state.dataset
@@ -76,6 +84,8 @@ if dataset is not None:
         if col not in dataset.columns:
             dataset[col] = ""
     dataset["kategori_awal"] = dataset[SURAT].map(category_initial)
+    if st.session_state.get("legacy_sheet", False):
+        st.info("Dataset dibaca dari tab Data. Impor data terbaru untuk melengkapi nilai pembanding sebelum mengedit tabel.")
 
 st.subheader("1. Impor data")
 st.write("Unggah CSV atau Excel. Kolom dan pemisah CSV dikenali otomatis.")
@@ -118,6 +128,7 @@ if pending is not None:
         try:
             save(result)
             st.session_state.dataset = result
+            st.session_state.legacy_sheet = False
             st.session_state.revision += 1
             st.session_state["uploader_revision"] = st.session_state.get("uploader_revision", 0) + 1
             st.rerun()
@@ -130,7 +141,7 @@ if dataset is None:
 else:
     st.caption("Edit kolom sumber atau tambah baris. Kolom perbandingan dihitung dari data impor dan tidak dapat diedit langsung.")
     edited = st.data_editor(display_result(dataset), num_rows="dynamic", disabled=META, width="stretch", key=f"editor_{st.session_state.revision}")
-    if st.button("Simpan edit tabel"):
+    if st.button("Simpan edit tabel", disabled=st.session_state.get("legacy_sheet", False)):
         try:
             edited = edited.fillna("").astype(str)
             edited[KEY] = edited[KEY].str.strip()
@@ -170,4 +181,4 @@ else:
             st.error(f"Gagal menyimpan: {exc}")
     st.download_button("Unduh CSV hasil", display_result(dataset).to_csv(index=False).encode("utf-8-sig"), "hasil_kontrol.csv", "text/csv")
 
-st.caption(f"Hasil disimpan di dataset lokal dan menggantikan isi tab Google Sheets: {TAB}. Edit langsung pada tab itu akan tertimpa saat penyimpanan berikutnya.")
+st.caption(f"Dataset kerja disimpan di tab Data_kerja_HDUL; hasil ditampilkan di tab {TAB}. Edit langsung di Google Sheets dapat tertimpa saat aplikasi menyimpan.")
