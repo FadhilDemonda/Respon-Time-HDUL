@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from engine import META, SOURCE, SURAT, category_initial, compare, display_result, initialize, prepare_auto, read_csv, read_excel
+from engine import compare, display_result, initialize, prepare_auto, read_csv, read_excel, restore_dataset
 from sheets_sync import TAB, load as load_sheet, sync
 
 
@@ -62,15 +62,12 @@ if "dataset" not in st.session_state:
 if "revision" not in st.session_state:
     st.session_state.revision = 0
 dataset = st.session_state.dataset
-if dataset is not None and (any(c not in dataset.columns for c in SOURCE) or "no_surat_kontrol_baru" not in dataset.columns):
-    st.error("Dataset tersimpan memakai format lama. Gunakan database baru melalui HDUL_DB_PATH, lalu impor ulang data awal. Data lama tidak dihapus.")
-    st.stop()
 if dataset is not None:
-    dataset = dataset.copy()
-    for col in META:
-        if col not in dataset.columns:
-            dataset[col] = ""
-    dataset["kategori_awal"] = dataset[SURAT].map(category_initial)
+    try:
+        dataset = restore_dataset(dataset)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
 
 st.subheader("1. Impor data")
 st.caption("Tarik file ke kotak di bawah atau pilih file dari perangkat. Mendukung CSV dan Excel (.xlsx).")

@@ -1,6 +1,7 @@
 """Pencocokan data rencana kontrol berdasarkan isi dan timestamp sumber."""
 import io
 import csv
+import re
 from datetime import datetime
 
 import pandas as pd
@@ -12,6 +13,13 @@ UPDATED = "updated_date"
 RESPON = "respon_bpjs"
 SOURCE = [KEY, SURAT, INSERTED, UPDATED, RESPON]
 META = ["kategori_awal", "no_surat_kontrol_baru", "respon_bpjs_baru", "updated_date_baru", "updated_date_berubah", "durasi_jam", "tanggal_pengambilan_data", "kategori", "ketersediaan_data"]
+
+
+def drop_empty_unnamed(df):
+    columns = [col for col in df.columns
+               if re.fullmatch(r"Unnamed: \d+(?:_level_\d+)?", str(col), re.IGNORECASE)
+               and df[col].fillna("").astype(str).str.strip().eq("").all()]
+    return df.drop(columns=columns)
 
 
 def read_csv(data, separator=None, encoding=None):
@@ -30,11 +38,11 @@ def read_csv(data, separator=None, encoding=None):
     df = pd.read_csv(io.StringIO(content), sep=separator, dtype=str, keep_default_na=False)
     if df.columns.duplicated().any():
         raise ValueError("Nama kolom harus unik.")
-    return df
+    return drop_empty_unnamed(df)
 
 
 def read_excel(data, sheet=0):
-    return pd.read_excel(io.BytesIO(data), sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl")
+    return drop_empty_unnamed(pd.read_excel(io.BytesIO(data), sheet_name=sheet, dtype=str, keep_default_na=False, engine="openpyxl"))
 
 
 def prepare(df, key=KEY, surat=SURAT, inserted=INSERTED, updated=UPDATED, respon=RESPON):
@@ -78,6 +86,26 @@ def category_initial(value):
     return "HDUL" if kind(value) == "hdul" else "Tidak HDUL"
 
 
+def restore_dataset(df):
+    out = drop_empty_unnamed(df).copy().fillna("")
+    columns = {}
+    for col in out.columns:
+        normalized = str(col).strip().lower()
+        if normalized in columns:
+            raise ValueError(f"Nama kolom dataset tersimpan tidak unik: {normalized}")
+        columns[normalized] = col
+    missing = [col for col in SOURCE if col not in columns]
+    if missing:
+        raise ValueError("Kolom wajib pada tab Data belum tersedia: " + ", ".join(missing))
+    out = out.rename(columns={original: normalized for normalized, original in columns.items()
+                              if normalized in SOURCE or normalized in META})
+    for col in META:
+        if col not in out:
+            out[col] = ""
+    out["kategori_awal"] = out[SURAT].map(category_initial)
+    return out
+
+
 def display_result(df):
     """Sembunyikan nilai pembanding yang sama tanpa membuang nilai aslinya."""
     out = df.copy()
@@ -103,6 +131,26 @@ def timestamp(value):
         return None
 
 
+def same_value(column, first, second):
+    first, second = str(first).strip(), str(second).strip()
+    if column == SURAT and first in ("", "-") and second in ("", "-"):
+        return True
+    if column == UPDATED:
+        a, b = timestamp(first), timestamp(second)
+        if a is not None and b is not None:
+            return a == b
+    return first == second
+
+
+def ongoing_category(inserted, day):
+    start = timestamp(inserted)
+    if start is None or day is None or day < start.date():
+        return "Perlu diperiksa: tanggal tidak valid atau belum tersedia"
+    if (day - start.date()).days <= 2:
+        return "Belum diubah, masih dalam target"
+    return "Belum diubah, melewati target"
+
+
 def initialize(df, day=None):
     out = df.drop(columns=[c for c in META if c in df], errors="ignore").copy()
     for col in META:
@@ -110,11 +158,28 @@ def initialize(df, day=None):
     out["kategori_awal"] = out[SURAT].map(category_initial)
     out["tanggal_pengambilan_data"] = day.isoformat() if day else ""
     out["kategori"] = out[SURAT].map(lambda x: "Tidak HDUL" if kind(x) == "filled" else "Belum ada pembanding")
+    for idx, row in out.iterrows():
+        if kind(row[SURAT]) == "hdul":
+            out.at[idx, "kategori"] = ongoing_category(row[INSERTED], day)
     out["ketersediaan_data"] = "Data awal"
     return out
 
 
 def compare(base, newer, day=None):
+    base, newer = drop_empty_unnamed(base), drop_empty_unnamed(newer)
+    base_names = {}
+    for col in base.columns:
+        normalized = str(col).strip().casefold()
+        if normalized in base_names:
+            raise ValueError(f"Nama kolom dataset tersimpan tidak unik setelah dirapikan: {normalized}")
+        base_names[normalized] = col
+    rename = {col: base_names[str(col).strip().casefold()] for col in newer.columns
+              if str(col).strip().casefold() in base_names}
+    if any(target in META for target in rename.values()):
+        raise ValueError("Nama kolom file bertabrakan dengan kolom hasil.")
+    newer = newer.rename(columns=rename)
+    if newer.columns.duplicated().any():
+        raise ValueError("Nama kolom file tidak unik setelah disesuaikan dengan dataset tersimpan.")
     for frame in (base, newer):
         if any(c not in frame for c in SOURCE):
             raise ValueError("Dataset lama belum memiliki kolom timestamp dan respons. Impor ulang data awal dengan format baru.")
@@ -134,10 +199,16 @@ def compare(base, newer, day=None):
             result.at[idx, "ketersediaan_data"] = "Belum ada data terbaru"
             result.at[idx, "kategori"] = "Belum ada data terbaru"
             result.at[idx, "durasi_jam"] = ""
-            result.at[idx, "tanggal_pengambilan_data"] = ""
+            result.at[idx, "tanggal_pengambilan_data"] = day.isoformat() if day and kind(row[SURAT]) == "hdul" else ""
             continue
         update = incoming.loc[key]
-        result.at[idx, "ketersediaan_data"] = "Ditemukan"
+        previous_columns = {SURAT: "no_surat_kontrol_baru", RESPON: "respon_bpjs_baru", UPDATED: "updated_date_baru"}
+        has_previous = row.get("ketersediaan_data") != "Data awal" and any(
+            str(row.get(col, "")).strip() for col in previous_columns.values()
+        )
+        unchanged = all(same_value(col, row[previous_columns[col]] if has_previous else row[col], update[col])
+                        for col in previous_columns)
+        result.at[idx, "ketersediaan_data"] = "Belum ada data terbaru" if unchanged else "Ditemukan"
         result.at[idx, "tanggal_pengambilan_data"] = day.isoformat() if day else ""
         result.at[idx, "no_surat_kontrol_baru"] = update[SURAT]
         result.at[idx, "respon_bpjs_baru"] = update[RESPON]
@@ -157,13 +228,7 @@ def compare(base, newer, day=None):
         elif initial == "empty" or latest == "empty":
             category = "Perlu diperiksa"
         elif latest == "hdul":
-            start = timestamp(row[INSERTED])
-            if start is None or day is None or day < start.date():
-                category = "Perlu diperiksa: tanggal tidak valid atau belum tersedia"
-            elif (day - start.date()).days <= 2:
-                category = "Belum diubah, masih dalam target"
-            else:
-                category = "Belum diubah, melewati target"
+            category = ongoing_category(row[INSERTED], day)
         else:
             start, end = timestamp(row[INSERTED]), timestamp(update[UPDATED])
             try:
@@ -177,6 +242,9 @@ def compare(base, newer, day=None):
                 days = (end.date() - start.date()).days
                 category = "Sesuai target" if days <= 2 else "Melewati target"
         result.at[idx, "kategori"] = category
+        if all(same_value(col, row[col], update[col]) for col in previous_columns):
+            for col in previous_columns.values():
+                result.at[idx, col] = ""
     new_rows = newer[~newer[KEY].isin(base[KEY])].copy()
     if not new_rows.empty:
         result = pd.concat([result, initialize(new_rows, day=day)], ignore_index=True).fillna("")
