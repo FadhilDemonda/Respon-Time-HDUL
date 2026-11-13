@@ -1,0 +1,40 @@
+/* Red marks the import and save actions; neutral surfaces keep tables readable. */
+.stMainBlockContainer { max-width: 1440px; padding-top: 2.5rem; padding-bottom: 2rem; }
+h1 { font-size: clamp(1.8rem, 3vw, 2.5rem) !important; letter-spacing: -.035em; }
+h2 { font-size: 1.35rem !important; letter-spacing: -.02em; }
+[data-testid="stCaptionContainer"] { color: var(--text-color); opacity: .78; }
+[data-testid="stFileUploader"] { margin: .5rem 0 1.5rem; }
+[data-testid="stFileUploaderDropzone"] {
+    min-height: 340px; padding: 2.5rem 1.25rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+    border: 1px solid #777780; border-radius: 10px;
+    background: var(--secondary-background-color);
+}
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    order: 1; flex: 0 0 auto; width: auto; flex-direction: column; align-items: center; text-align: center; gap: .75rem; margin: 0;
+}
+[data-testid="stFileUploaderDropzone"] > span { order: 2; flex: 0 0 auto; }
+[data-testid="stFileUploaderDropzoneInstructions"] svg { width: 44px; height: 44px; color: #c84641; }
+[data-testid="stFileUploaderDropzoneInstructions"] > div { align-items: center; }
+[data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0; }
+[data-testid="stFileUploaderDropzoneInstructions"] span::after {
+    content: "Pilih file data kontrol"; font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 650;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] small { font-size: .875rem; }
+[data-testid="stFileUploaderDropzone"] button,
+button[kind="primary"] {
+    background: #ad302d; border: 1px solid #ad302d; color: #fff;
+    min-height: 48px; padding: .65rem 1.75rem; border-radius: 5px;
+    font-weight: 600; cursor: pointer;
+}
+[data-testid="stFileUploaderDropzone"] button:hover,
+button[kind="primary"]:hover { background: #902724; border-color: #902724; color: #fff; }
+button:focus-visible, input:focus-visible { outline: 3px solid #e26058 !important; outline-offset: 4px; }
+button:disabled { cursor: not-allowed; }
+[data-testid="stExpander"] { margin: .5rem 0 1rem; }
+[data-testid="stMetric"] { padding: .5rem 0 1rem; }
+@media (max-width: 640px) {
+    .stMainBlockContainer { padding: 1.5rem 1rem; }
+    [data-testid="stFileUploaderDropzone"] { min-height: 280px; padding: 1.5rem 1rem; }
+    [data-testid="stFileUploaderDropzone"] button { width: 100%; }
+}
