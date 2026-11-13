@@ -95,15 +95,10 @@ if pending is not None:
     st.caption("Kolom baru dikosongkan pada tampilan jika nilainya sama dengan data awal. Kategori awal kosong atau '-' dihitung sebagai Tidak HDUL.")
     st.caption("Kolom surat, respons, tanggal terbaru, dan kategori tetap terlihat di kanan. Geser tabel ke kiri untuk melihat kolom lain.")
     review_table(display_result(pending))
-    include_new = False
     if new_rows is not None and not new_rows.empty:
-        st.info(f"{len(new_rows)} ID hanya ada pada CSV pembanding dan tidak termasuk hasil left join.")
-        st.dataframe(new_rows, width="stretch")
-        include_new = st.checkbox("Tambahkan ID baru ke dataset kerja setelah perbandingan")
+        st.info(f"{len(new_rows)} ID baru ditambahkan di bagian bawah hasil.")
     if st.button("Simpan hasil ke dataset", type="primary"):
         result = pending
-        if include_new:
-            result = pd.concat([result, initialize(new_rows, day=import_date)], ignore_index=True).fillna("")
         try:
             save(result)
             st.session_state.dataset = result

@@ -177,4 +177,7 @@ def compare(base, newer, day=None):
                 days = (end.date() - start.date()).days
                 category = "Sesuai target" if days <= 2 else "Melewati target"
         result.at[idx, "kategori"] = category
-    return result, newer[~newer[KEY].isin(base[KEY])].copy()
+    new_rows = newer[~newer[KEY].isin(base[KEY])].copy()
+    if not new_rows.empty:
+        result = pd.concat([result, initialize(new_rows, day=day)], ignore_index=True).fillna("")
+    return result, new_rows

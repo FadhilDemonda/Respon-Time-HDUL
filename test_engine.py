@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 import pandas as pd
 from engine import compare, display_result, initialize, prepare, prepare_auto, read_csv
 
@@ -8,6 +9,27 @@ def rows(values):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_new_ids_are_appended_with_all_columns(self):
+        base = prepare_auto(pd.DataFrame([{
+            'id_rencana_kontrol': '1', 'no_surat_kontrol': 'HDUL',
+            'inserted_date': '2026-01-10', 'updated_date': '2026-01-10',
+            'respon_bpjs': 'gagal', 'nama_pasien': 'Lama',
+        }]))
+        latest = prepare_auto(pd.DataFrame([
+            {'id_rencana_kontrol': '1', 'no_surat_kontrol': '123', 'inserted_date': '2026-01-10', 'updated_date': '2026-01-12', 'respon_bpjs': 'ok', 'nama_pasien': 'Lama', 'kolom_tambahan': 'a'},
+            {'id_rencana_kontrol': '2', 'no_surat_kontrol': '456', 'inserted_date': '2026-01-12', 'updated_date': '2026-01-12', 'respon_bpjs': 'ok', 'nama_pasien': 'Baru', 'kolom_tambahan': 'b'},
+        ]))
+        result, new = compare(initialize(base), latest, day=date(2026, 1, 12))
+        self.assertEqual(result['id_rencana_kontrol'].tolist(), ['1', '2'])
+        self.assertEqual(result.iloc[1]['nama_pasien'], 'Baru')
+        self.assertEqual(result.iloc[1]['kolom_tambahan'], 'b')
+        self.assertEqual(result.iloc[1]['tanggal_pengambilan_data'], '2026-01-12')
+        self.assertEqual(result.iloc[1]['ketersediaan_data'], 'Data awal')
+        self.assertEqual(new['id_rencana_kontrol'].tolist(), ['2'])
+        again, new_again = compare(result, latest, day=date(2026, 1, 12))
+        self.assertEqual(again['id_rencana_kontrol'].tolist(), ['1', '2'])
+        self.assertTrue(new_again.empty)
+
     def test_left_join_and_timestamp_categories(self):
         initial = rows([
             ["001", "HDUL", "2026-01-10 10:00:00", "2026-01-10 10:00:00", "gagal"],
