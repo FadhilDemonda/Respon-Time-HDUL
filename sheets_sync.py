@@ -8,7 +8,6 @@ from gspread.exceptions import WorksheetNotFound
 
 SPREADSHEET_ID = "1dbUFFyyseXObg7r4jLofnTrUcWycte4YryeSH62GuII"
 TAB = "Data"
-RAW_TAB = "Data_kerja_HDUL"
 
 
 def open_sheet():
@@ -30,22 +29,17 @@ def open_sheet():
 def load():
     sheet = open_sheet()
     try:
-        tab = sheet.worksheet(RAW_TAB)
-        legacy = False
+        tab = sheet.worksheet(TAB)
     except WorksheetNotFound:
-        try:
-            tab = sheet.worksheet(TAB)
-        except WorksheetNotFound:
-            return None, False
-        legacy = True
+        return None
     values = tab.get_all_values()
     if not values:
-        return None, False
+        return None
     columns = values[0]
     if any(not col for col in columns) or len(columns) != len(set(columns)):
         raise ValueError(f"Nama kolom pada tab {tab.title} kosong atau duplikat.")
     rows = [row[:len(columns)] + [""] * max(0, len(columns) - len(row)) for row in values[1:]]
-    return pd.DataFrame(rows, columns=columns, dtype=str), legacy
+    return pd.DataFrame(rows, columns=columns, dtype=str)
 
 
 def write_tab(sheet, title, df):
@@ -64,7 +58,6 @@ def write_tab(sheet, title, df):
     tab.update(values=padded, range_name="A1", value_input_option="RAW")
 
 
-def sync(df, shown):
+def sync(df):
     sheet = open_sheet()
-    write_tab(sheet, RAW_TAB, df)
-    write_tab(sheet, TAB, shown)
+    write_tab(sheet, TAB, df)

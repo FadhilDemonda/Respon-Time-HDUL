@@ -42,12 +42,12 @@ st.title("Pengolah data kontrol")
 st.caption("Impor CSV atau Excel, rapikan data, cocokkan rencana kontrol, lalu unduh hasilnya.")
 
 def save(df):
-    sync(df, display_result(df))
+    sync(df)
 
 
 if "dataset" not in st.session_state:
     try:
-        st.session_state.dataset, st.session_state.legacy_sheet = load_sheet()
+        st.session_state.dataset = load_sheet()
     except Exception as exc:
         st.error(f"Gagal membaca Google Sheets: {exc}")
         st.stop()
@@ -63,8 +63,6 @@ if dataset is not None:
         if col not in dataset.columns:
             dataset[col] = ""
     dataset["kategori_awal"] = dataset[SURAT].map(category_initial)
-    if st.session_state.get("legacy_sheet", False):
-        st.info("Dataset dibaca dari tab Data. Impor data terbaru untuk melengkapi nilai pembanding sebelum mengedit tabel.")
 
 st.subheader("1. Impor data")
 st.write("Unggah CSV atau Excel. Kolom dan pemisah CSV dikenali otomatis.")
@@ -102,7 +100,6 @@ if pending is not None:
         try:
             save(result)
             st.session_state.dataset = result
-            st.session_state.legacy_sheet = False
             st.session_state.revision += 1
             st.session_state["uploader_revision"] = st.session_state.get("uploader_revision", 0) + 1
             st.rerun()
@@ -112,4 +109,4 @@ if pending is not None:
 if dataset is not None:
     st.download_button("Unduh CSV hasil", display_result(dataset).to_csv(index=False).encode("utf-8-sig"), "hasil_kontrol.csv", "text/csv")
 
-st.caption(f"Dataset kerja disimpan di tab Data_kerja_HDUL; hasil ditampilkan di tab {TAB}. Edit langsung di Google Sheets dapat tertimpa saat aplikasi menyimpan.")
+st.caption(f"Dataset disimpan di tab {TAB}. Edit langsung di Google Sheets dapat tertimpa saat aplikasi menyimpan.")
