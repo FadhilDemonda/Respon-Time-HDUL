@@ -28,4 +28,4 @@ Dataset kerja dibaca dari tab `Data_kerja_HDUL` di Google Sheets. Jika tab terse
 
 Di Streamlit Community Cloud, masukkan kredensial service account dalam format TOML di Secrets dengan bagian `[gcp_service_account]`. Aplikasi tidak meminta kata sandi; siapa pun yang bisa mengakses aplikasi dapat melihat dataset.
 
-Edit kolom sumber dan tambah baris tersedia dalam tabel. Kolom pembanding diperbarui dengan mengimpor CSV terbaru. Data dari versi aplikasi lama tidak dihapus; gunakan `HDUL_DB_PATH` untuk memilih database baru, lalu impor ulang data awal.
+Kolom pembanding diperbarui dengan mengimpor CSV terbaru. Data dari versi aplikasi lama tidak dihapus; gunakan `HDUL_DB_PATH` untuk memilih database baru, lalu impor ulang data awal.
