@@ -9,6 +9,40 @@ def rows(values):
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_missing_ids_preserve_last_observed_results_across_imports(self):
+        cases = [
+            ('HDUL', '123', date(2026, 11, 12), 'Sesuai target'),
+            ('HDUL', '123', date(2026, 11, 13), 'Melewati target'),
+            ('HDUL', 'HDUL', date(2026, 11, 12), 'Belum diubah, masih dalam target'),
+            ('HDUL', 'HDUL', date(2026, 11, 13), 'Belum diubah, melewati target'),
+            ('123', '123', date(2026, 11, 12), 'Tidak HDUL'),
+            ('HDUL', '-', date(2026, 11, 12), 'Perlu diperiksa'),
+        ]
+        for original, current, observed_day, category in cases:
+            with self.subTest(category=category):
+                base = rows([['1', original, '2026-11-10', '2026-11-10', 'gagal']])
+                latest = rows([['1', current, '2026-11-10', observed_day.isoformat(), 'ok']])
+                saved, _ = compare(initialize(base, day=date(2026, 11, 10)), latest, day=observed_day)
+                self.assertEqual(saved.loc[0, 'kategori'], category)
+                expected = saved.copy()
+                expected['ketersediaan_data'] = 'Belum ada data terbaru'
+                for import_day in [date(2026, 11, 15), date(2026, 11, 16)]:
+                    saved, _ = compare(restore_dataset(saved), latest.iloc[:0], day=import_day)
+                    pd.testing.assert_frame_equal(saved, expected)
+
+    def test_initial_results_survive_absence_and_update_when_id_returns(self):
+        base = rows([['1', 'HDUL', '2026-11-10', '2026-11-10', 'gagal']])
+        saved = initialize(base, day=date(2026, 11, 10))
+        missing, _ = compare(saved, base.iloc[:0], day=date(2026, 11, 15))
+        self.assertEqual(missing.loc[0, 'kategori'], saved.loc[0, 'kategori'])
+        self.assertEqual(missing.loc[0, 'tanggal_pengambilan_data'], '2026-11-10')
+        returned = rows([['1', '123', '2026-11-10', '2026-11-16', 'ok']])
+        result, _ = compare(missing, returned, day=date(2026, 11, 16))
+        self.assertEqual(result.loc[0, 'kategori'], 'Melewati target')
+        self.assertEqual(result.loc[0, 'no_surat_kontrol_baru'], '123')
+        self.assertEqual(result.loc[0, 'tanggal_pengambilan_data'], '2026-11-16')
+        self.assertEqual(result.loc[0, 'ketersediaan_data'], 'Ditemukan')
+
     def test_restore_source_only_sheet_creates_missing_result_columns(self):
         source = rows([['1', 'HDUL', '2026-11-09', '2026-11-09', 'gagal']])
         source = source.rename(columns={'id_rencana_kontrol': ' ID_RENCANA_KONTROL '})
@@ -105,13 +139,13 @@ class ComparisonTests(unittest.TestCase):
         ])
         latest = rows([
             ["001", "123", "2026-01-10 10:00:00", "2026-01-12 10:00:00", "ok"],
-            ["002", "456", "2026-01-10 10:00:00", "2026-01-12 10:00:01", "ok"],
+            ["002", "456", "2026-01-10 10:00:00", "2026-01-13 10:00:00", "ok"],
             ["003", "hdul", "2026-01-10 10:00:00", "2026-01-12 10:00:00", "gagal"],
             ["004", "123", "2026-01-10 10:00:00", "2026-01-12 10:00:00", "ok"],
             ["006", "789", "2026-01-10 10:00:00", "2026-01-12 10:00:00", "ok"],
         ])
-        result, new = compare(initialize(initial), latest)
-        self.assertEqual(result['kategori'].tolist()[:4], ['Sesuai target', 'Melewati target', 'Tidak diubah', 'Tidak HDUL'])
+        result, new = compare(initialize(initial), latest, day=date(2026, 1, 12))
+        self.assertEqual(result['kategori'].tolist()[:4], ['Sesuai target', 'Melewati target', 'Belum diubah, masih dalam target', 'Tidak HDUL'])
         self.assertEqual(result.iloc[0]['no_surat_kontrol'], 'HDUL')
         self.assertEqual(result.iloc[0]['no_surat_kontrol_baru'], '123')
         self.assertEqual(result.iloc[0]['respon_bpjs_baru'], 'ok')
@@ -119,14 +153,22 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(result.iloc[4]['ketersediaan_data'], 'Belum ada data terbaru')
         self.assertEqual(new.iloc[0]['id_rencana_kontrol'], '006')
 
-    def test_missing_or_unchanged_update_does_not_prove_completion(self):
+    def test_filled_letter_uses_timestamp_even_when_unchanged(self):
         base = rows([['1', 'HDUL', '2026-01-10', '2026-01-10', 'gagal']])
         latest = rows([['1', '123', '2026-01-10', '2026-01-10', 'ok']])
         result, _ = compare(initialize(base), latest)
-        self.assertTrue(result.iloc[0]['kategori'].startswith('Perlu diperiksa'))
+        self.assertEqual(result.iloc[0]['kategori'], 'Sesuai target')
+        self.assertEqual(result.iloc[0]['updated_date_berubah'], 'Tidak')
         latest.loc[0, 'updated_date'] = 'invalid'
         result, _ = compare(initialize(base), latest)
         self.assertEqual(result.iloc[0]['updated_date_berubah'], 'Tidak diketahui')
+        self.assertEqual(result.iloc[0]['kategori'], 'Perlu diperiksa: tanggal tidak valid')
+
+    def test_target_uses_calendar_days_instead_of_elapsed_hours(self):
+        base = rows([['1', 'HDUL', '2026-01-10 10:00:00', '2026-01-10 10:00:00', 'gagal']])
+        latest = rows([['1', '123', '2026-01-10 10:00:00', '2026-01-12 10:00:01', 'ok']])
+        result, _ = compare(initialize(base), latest, day=date(2026, 1, 12))
+        self.assertEqual(result.iloc[0]['kategori'], 'Sesuai target')
 
     def test_duplicate_and_text_id(self):
         df = read_csv(b'id_rencana_kontrol,no_surat_kontrol,inserted_date,updated_date,respon_bpjs\n001,HDUL,2026-01-10,2026-01-10,gagal\n')

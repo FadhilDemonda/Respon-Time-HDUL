@@ -194,12 +194,7 @@ def compare(base, newer, day=None):
     for idx, row in result.iterrows():
         key = row[KEY]
         if key not in incoming.index:
-            for col in ["no_surat_kontrol_baru", "respon_bpjs_baru", "updated_date_baru", "updated_date_berubah"]:
-                result.at[idx, col] = ""
             result.at[idx, "ketersediaan_data"] = "Belum ada data terbaru"
-            result.at[idx, "kategori"] = "Belum ada data terbaru"
-            result.at[idx, "durasi_jam"] = ""
-            result.at[idx, "tanggal_pengambilan_data"] = day.isoformat() if day and kind(row[SURAT]) == "hdul" else ""
             continue
         update = incoming.loc[key]
         previous_columns = {SURAT: "no_surat_kontrol_baru", RESPON: "respon_bpjs_baru", UPDATED: "updated_date_baru"}
